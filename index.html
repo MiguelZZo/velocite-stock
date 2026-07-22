@@ -118,10 +118,11 @@
 
   .line-editor-summary{font-size:12.5px;color:var(--ink-soft);margin-bottom:6px;}
   .line-editor{max-height:320px;overflow-y:auto;border:1px solid var(--border);border-radius:3px;padding:8px;background:#fafaf8;}
-  .line-row{display:flex;align-items:center;gap:12px;padding:6px 4px;flex-wrap:wrap;border-bottom:1px solid #eeefe9;}
+  .line-row{display:grid;grid-template-columns:92px 1fr 40px;gap:10px;align-items:center;padding:8px 6px;border-bottom:1px solid #eeefe9;}
+  .line-row.with-color{grid-template-columns:92px 118px 1fr 40px;}
   .line-row:last-child{border-bottom:none;}
   .line-input{width:90px;padding:11px 8px;border:1px solid var(--border-strong);border-radius:3px;font-family:var(--font-mono);font-size:16px;letter-spacing:.06em;text-align:center;background:#fff;min-height:44px;}
-  .line-status{font-size:13px;display:flex;align-items:center;gap:6px;color:var(--ink-faint);flex:1;min-width:140px;}
+  .line-status{font-size:13px;display:flex;align-items:center;gap:6px;color:var(--ink-faint);overflow:hidden;white-space:nowrap;text-overflow:ellipsis;min-width:0;}
   .line-status .cc-icon{width:14px;text-align:center;font-weight:700;}
   .line-status.ok{color:var(--ok);}
   .line-status.warn{color:#B5860A;}
@@ -184,6 +185,7 @@
   .code-tag{font-family:var(--font-mono);font-size:19px;font-weight:700;letter-spacing:.06em;background:var(--bg);border:1px solid var(--border-strong);padding:5px 10px;border-radius:3px;min-width:74px;text-align:center;}
 
   .mini-select{padding:9px 12px;border-radius:20px;border:1px solid var(--border-strong);font-size:14px;font-weight:700;cursor:pointer;background:#fff;min-height:40px;}
+  .line-row .mini-select{width:100%;}
   .mini-select.couleur-vert{background:var(--c-vert-soft);color:var(--c-vert);}
   .mini-select.couleur-jaune{background:var(--c-jaune-soft);color:var(--c-jaune);}
   .mini-select.couleur-bleu{background:var(--c-bleu-soft);color:var(--c-bleu);}
@@ -230,6 +232,11 @@
   .modal-box .field{margin-bottom:10px;}
   .modal-box .row-inline{display:flex;gap:8px;align-items:center;flex-wrap:wrap;}
   .modal-box .row-inline input{padding:10px 12px;border:1px solid var(--border-strong);border-radius:3px;font-size:16px;min-height:42px;flex:1;min-width:160px;}
+  .user-create-card{background:var(--bg);border:1px dashed var(--border-strong);border-radius:4px;padding:14px;margin:10px 0 16px;}
+  .user-create-title{font-family:var(--font-display);text-transform:uppercase;font-size:12.5px;letter-spacing:.05em;color:var(--ink-soft);margin-bottom:10px;}
+  .user-form-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;}
+  .user-form-grid .field{margin-bottom:0;}
+  @media (max-width:520px){.user-form-grid{grid-template-columns:1fr;}}
   .lieu-admin-item{display:flex;align-items:center;gap:8px;padding:9px 0;border-bottom:1px solid var(--border);flex-wrap:wrap;}
   .lieu-admin-item input{flex:1;padding:10px 10px;border:1px solid var(--border-strong);border-radius:3px;font-size:16px;min-height:42px;min-width:140px;}
   .modal-close-row{display:flex;justify-content:flex-end;gap:8px;margin-top:18px;}
@@ -248,9 +255,6 @@
       <span id="currentUserTag" style="align-self:center;font-size:13px;color:var(--ink-soft);margin-right:4px;"></span>
       <button class="btn-ghost btn-sm" id="btnLogout" style="display:none;">Déconnexion</button>
       <button class="btn-ghost btn-sm" id="btnExportCsv">Exporter CSV</button>
-      <button class="btn-ghost btn-sm" id="btnExportJson">Sauvegarde JSON</button>
-      <button class="btn-ghost btn-sm" id="btnImportJson">Restaurer JSON</button>
-      <input type="file" id="fileImport" accept="application/json">
       <button class="btn-ghost btn-sm" id="btnAdmin">Administration</button>
       <button class="btn-collect" id="btnToggleRemove">Enlèvement Vélocité</button>
       <button class="btn-hs-solid" id="btnToggleHs">Mettre en HS</button>
@@ -610,7 +614,6 @@
   let bikes = [];
   let lieux = ['Stock AMS', 'Local Envie Anjou'];
   let bonsHistory = [];
-  let adminPwd = 'admin';
   let fbdb = null;
   let users = [];
   let journal = [];
@@ -631,10 +634,6 @@
   function saveBikes(){ if(fbdb) fbdb.ref(FB_PREFIX+'/bikes').set(bikes); mirrorSet(FB_PREFIX+'/bikes', bikes); }
   function saveLieux(){ if(fbdb) fbdb.ref(FB_PREFIX+'/lieux').set(lieux); mirrorSet(FB_PREFIX+'/lieux', lieux); }
   function saveBons(){ if(fbdb) fbdb.ref(FB_PREFIX+'/bons').set(bonsHistory); mirrorSet(FB_PREFIX+'/bons', bonsHistory); }
-  function savePwd(newPwd){
-    adminPwd = newPwd;
-    if(fbdb) fbdb.ref(FB_PREFIX+'/adminPwd').set(newPwd);
-  }
   function suggestBonNumero(type){
     const prefix = type==='reception' ? 'REC' : 'ENL';
     const count = bonsHistory.filter(b=>b.type===type).length + 1;
@@ -648,7 +647,6 @@
     saveBons();
   }
   function bonNumeroExists(numero){ return bonsHistory.some(x=>x.numero===numero); }
-  function getPwd(){ return adminPwd; }
 
   // ---------- USERS ----------
   function saveUsers(){ if(fbdb) fbdb.ref(FB_PREFIX+'/users').set(users); mirrorSet(FB_PREFIX+'/users', users); }
@@ -681,17 +679,37 @@
     document.getElementById('currentUserTag').textContent = currentUser ? `Connecté : ${currentUser.nom}` : '';
   }
   function doLogin(username, password){
-    const u = findUser(username, password);
-    if(!u){
-      document.getElementById('loginErr').style.display = 'block';
+    const usersReady = attachDataListeners._sessionChecked === true;
+
+    if(usersReady){
+      const u = findUser(username, password);
+      if(u){
+        currentUser = { id:u.id, username:u.username, nom:u.nom, role:u.role||'user' };
+        sessionStorage.setItem(SESSION_KEY, JSON.stringify(currentUser));
+        document.getElementById('loginErr').style.display = 'none';
+        document.getElementById('loginUser').value=''; document.getElementById('loginPwd').value='';
+        hideLogin();
+        logAction('Connexion', `${currentUser.nom} s'est connecté`);
+        return;
+      }
+    }
+
+    // Accès de secours si Firebase n'est pas (encore) accessible : compte admin par défaut uniquement
+    if(!usersReady && username.trim().toLowerCase()==='admin' && password==='admin2026'){
+      currentUser = { id:'offline-admin', username:'admin', nom:'Administrateur (hors ligne)', role:'admin' };
+      sessionStorage.setItem(SESSION_KEY, JSON.stringify(currentUser));
+      document.getElementById('loginErr').style.display = 'none';
+      document.getElementById('loginUser').value=''; document.getElementById('loginPwd').value='';
+      hideLogin();
+      alert("Connecté en mode hors-ligne : Firebase n'est pas accessible pour le moment. Les données affichées peuvent être incomplètes tant que la connexion n'est pas rétablie (voir l'indicateur en haut de page).");
       return;
     }
-    currentUser = { id:u.id, username:u.username, nom:u.nom, role:u.role||'user' };
-    sessionStorage.setItem(SESSION_KEY, JSON.stringify(currentUser));
-    document.getElementById('loginErr').style.display = 'none';
-    document.getElementById('loginUser').value=''; document.getElementById('loginPwd').value='';
-    hideLogin();
-    logAction('Connexion', `${currentUser.nom} s'est connecté`);
+
+    const errEl = document.getElementById('loginErr');
+    errEl.textContent = usersReady
+      ? 'Identifiant ou mot de passe incorrect.'
+      : "Connexion à la base de données impossible pour le moment. Vérifie l'indicateur en haut de page, ou réessaie avec le compte admin par défaut.";
+    errEl.style.display = 'block';
   }
   function doLogout(){
     if(currentUser) logAction('Déconnexion', `${currentUser.nom} s'est déconnecté`);
@@ -712,25 +730,38 @@
     }catch(e){ return false; }
   }
 
-  function setConnUI(state){
+  function setConnUI(state, errCode){
     const el = document.getElementById('connDot');
     if(!el) return;
-    if(state===null){ el.textContent='● Connexion…'; el.style.color='#8A9099'; el.style.background='#EEF0F2'; }
-    else if(state===true){ el.textContent='● Connecté'; el.style.color='#3F8F5F'; el.style.background='#E3F0E7'; }
-    else { el.textContent='● Hors ligne'; el.style.color='#B23A3A'; el.style.background='#F5E4E2'; }
+    if(state===null){ el.textContent='● Connexion…'; el.style.color='#8A9099'; el.style.background='#EEF0F2'; el.title=''; }
+    else if(state===true){ el.textContent='● Connecté'; el.style.color='#3F8F5F'; el.style.background='#E3F0E7'; el.title=''; }
+    else {
+      let label = '● Hors ligne';
+      if(errCode==='auth/operation-not-allowed') label = '● Authentification anonyme désactivée (à activer dans Firebase)';
+      else if(errCode==='auth/network-request-failed') label = '● Réseau bloqué (Firebase injoignable)';
+      else if(errCode) label = `● Erreur : ${errCode}`;
+      el.textContent = label;
+      el.style.color='#B23A3A'; el.style.background='#F5E4E2';
+      el.title = errCode||'';
+    }
   }
 
   function initFirebase(){
     setConnUI(null);
+    let lastAuthErrCode = null;
     try{
       if(!firebase.apps.length) firebase.initializeApp(FB_CFG);
       fbdb = firebase.database();
 
-      fbdb.ref('.info/connected').on('value', snap=>{ setConnUI(snap.val()===true); });
+      fbdb.ref('.info/connected').on('value', snap=>{
+        if(snap.val()===true) setConnUI(true);
+        else setConnUI(false, lastAuthErrCode);
+      });
 
       firebase.auth().signInAnonymously().catch(err=>{
         console.error('Échec de connexion anonyme Firebase', err);
-        setConnUI(false);
+        lastAuthErrCode = err.code;
+        setConnUI(false, err.code);
       });
 
       firebase.auth().onAuthStateChanged(user=>{
@@ -757,11 +788,6 @@
     });
 
     fbdb.ref(FB_PREFIX+'/bons').on('value', snap=>{ bonsHistory = toArr(snap.val()); render(); });
-
-    fbdb.ref(FB_PREFIX+'/adminPwd').on('value', snap=>{
-      if(snap.val()===null){ adminPwd='admin'; fbdb.ref(FB_PREFIX+'/adminPwd').set('admin'); }
-      else adminPwd = snap.val();
-    });
 
     fbdb.ref(FB_PREFIX+'/users').on('value', snap=>{
       const v = toArr(snap.val());
@@ -822,11 +848,12 @@
         const stHtml = st
           ? `<span class="line-status ${st.status}"><span class="cc-icon">${st.status==='ok'?'✓':(st.status==='warn'?'⚠':'✗')}</span>${escapeHtml(st.label)}</span>`
           : `<span class="line-status"></span>`;
-        return `<div class="line-row">
+        const delBtn = lines.length>1 ? `<button type="button" class="line-del" data-idx="${idx}" title="Supprimer cette ligne">✕</button>` : `<span></span>`;
+        return `<div class="line-row${withColor?' with-color':''}">
           <input type="text" class="line-input" maxlength="4" inputmode="numeric" data-idx="${idx}" value="${escapeHtml(val)}" placeholder="0000">
           ${withColor ? couleurSelectHtml(idx) : ''}
           ${stHtml}
-          ${lines.length>1 ? `<button type="button" class="line-del" data-idx="${idx}" title="Supprimer cette ligne">✕</button>` : ''}
+          ${delBtn}
         </div>`;
       }).join('');
 
@@ -1631,27 +1658,6 @@
     const csv = rows.map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(';')).join('\n');
     downloadBlob(new Blob(['\uFEFF'+csv], {type:'text/csv;charset=utf-8;'}), `velocite-stock-${todayISO()}.csv`);
   });
-  document.getElementById('btnExportJson').addEventListener('click', ()=>{
-    downloadBlob(new Blob([JSON.stringify({bikes, lieux, bonsHistory}, null, 2)], {type:'application/json'}), `velocite-stock-backup-${todayISO()}.json`);
-  });
-  document.getElementById('btnImportJson').addEventListener('click', ()=> document.getElementById('fileImport').click());
-  document.getElementById('fileImport').addEventListener('change', (e)=>{
-    const file = e.target.files[0]; if(!file) return;
-    const reader = new FileReader();
-    reader.onload = (evt)=>{
-      try{
-        const data = JSON.parse(evt.target.result);
-        const newBikes = Array.isArray(data) ? data : data.bikes;
-        const newLieux = Array.isArray(data) ? lieux : (data.lieux || lieux);
-        const newBons = Array.isArray(data) ? bonsHistory : (data.bonsHistory || bonsHistory);
-        if(!Array.isArray(newBikes)) throw new Error('format invalide');
-        if(bikes.length>0 && !confirm('Cela remplacera les données actuellement affichées par celles du fichier. Continuer ?')) return;
-        bikes = newBikes; lieux = newLieux; bonsHistory = newBons;
-        saveBikes(); saveLieux(); saveBons(); selectedIds.clear(); render();
-      }catch(err){ alert('Fichier invalide : impossible de restaurer cette sauvegarde.'); }
-    };
-    reader.readAsText(file); e.target.value='';
-  });
   function downloadBlob(blob, filename){
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a'); a.href=url; a.download=filename;
@@ -1663,46 +1669,36 @@
   const adminOverlay = document.getElementById('adminOverlay');
   const adminBox = document.getElementById('adminBox');
   document.getElementById('btnAdmin').addEventListener('click', ()=>{
-    renderAdminLogin();
+    if(!currentUser || currentUser.role!=='admin'){
+      alert("Accès réservé aux comptes Administrateur. Connecte-toi avec un compte Admin pour accéder à cette section.");
+      return;
+    }
+    renderAdminPanel();
     adminOverlay.classList.add('open');
   });
   adminOverlay.addEventListener('click', (e)=>{ if(e.target===adminOverlay) closeAdmin(); });
   function closeAdmin(){ adminOverlay.classList.remove('open'); }
-
-  function renderAdminLogin(){
-    adminBox.innerHTML = `
-      <h2>Administration</h2>
-      <div class="field"><label>Mot de passe</label><input type="password" id="adminPwdInput"></div>
-      <div class="modal-error" id="adminErr">Mot de passe incorrect.</div>
-      <div class="modal-close-row">
-        <button class="btn-ghost" id="adminCancel">Annuler</button>
-        <button class="btn-primary" id="adminLogin">Entrer</button>
-      </div>`;
-    document.getElementById('adminCancel').addEventListener('click', closeAdmin);
-    const doLogin = ()=>{
-      const val = document.getElementById('adminPwdInput').value;
-      if(val === getPwd()) renderAdminPanel();
-      else document.getElementById('adminErr').style.display='block';
-    };
-    document.getElementById('adminLogin').addEventListener('click', doLogin);
-    document.getElementById('adminPwdInput').addEventListener('keydown', e=>{ if(e.key==='Enter') doLogin(); });
-    document.getElementById('adminPwdInput').focus();
-  }
 
   function renderAdminPanel(){
     adminBox.innerHTML = `
       <h2>Administration</h2>
       <h3>Utilisateurs</h3>
       <div id="usersAdminList"></div>
-      <div class="row-inline" style="margin-top:10px;flex-wrap:wrap;">
-        <input type="text" id="newUserNom" placeholder="Nom affiché">
-        <input type="text" id="newUserUsername" placeholder="Identifiant">
-        <input type="password" id="newUserPwd" placeholder="Mot de passe">
-        <select id="newUserRole" style="padding:10px 12px;border:1px solid var(--border-strong);border-radius:3px;font-size:14px;min-height:42px;">
-          <option value="user">Utilisateur</option>
-          <option value="admin">Admin</option>
-        </select>
-        <button class="btn-primary btn-sm" id="addUserBtn">Créer</button>
+      <div class="user-create-card">
+        <div class="user-create-title">Créer un utilisateur</div>
+        <div class="user-form-grid">
+          <div class="field"><label for="newUserNom">Nom affiché</label><input type="text" id="newUserNom" placeholder="ex : Julie Martin"></div>
+          <div class="field"><label for="newUserUsername">Identifiant</label><input type="text" id="newUserUsername" placeholder="ex : jmartin"></div>
+          <div class="field"><label for="newUserPwd">Mot de passe</label><input type="password" id="newUserPwd"></div>
+          <div class="field">
+            <label for="newUserRole">Rôle</label>
+            <select id="newUserRole">
+              <option value="user">Utilisateur</option>
+              <option value="admin">Admin</option>
+            </select>
+          </div>
+        </div>
+        <button class="btn-primary" id="addUserBtn" style="width:100%;">Créer l'utilisateur</button>
       </div>
 
       <h3>Lieux de stockage</h3>
@@ -1710,11 +1706,6 @@
       <div class="row-inline" style="margin-top:10px;">
         <input type="text" id="newLieuInput" placeholder="Nom du nouveau lieu">
         <button class="btn-primary btn-sm" id="addLieuBtn">Ajouter</button>
-      </div>
-      <h3>Mot de passe administrateur</h3>
-      <div class="row-inline">
-        <input type="password" id="newPwdInput" placeholder="Nouveau mot de passe">
-        <button class="btn-ghost btn-sm" id="changePwdBtn">Modifier</button>
       </div>
       <div class="modal-close-row"><button class="btn-primary" id="adminDone">Fermer</button></div>`;
     renderUsersAdminList();
@@ -1741,14 +1732,6 @@
       lieux.push(val); saveLieux(); render(); renderLieuxAdminList();
       logAction('Administration', `Lieu ajouté : ${val}`);
       document.getElementById('newLieuInput').value='';
-    });
-    document.getElementById('changePwdBtn').addEventListener('click', ()=>{
-      const val = document.getElementById('newPwdInput').value.trim();
-      if(!val){ alert('Saisissez un nouveau mot de passe.'); return; }
-      savePwd(val);
-      logAction('Administration', 'Mot de passe administrateur modifié');
-      document.getElementById('newPwdInput').value='';
-      alert('Mot de passe mis à jour.');
     });
     document.getElementById('adminDone').addEventListener('click', closeAdmin);
   }
