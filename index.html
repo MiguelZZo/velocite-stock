@@ -54,6 +54,8 @@
   .btn-danger:hover{background:#efd0cd;}
   .btn-hs-solid{background:var(--danger);color:#fff;}
   .btn-hs-solid:hover{background:#8f2e2e;}
+  .btn-repair-solid{background:var(--ok);color:#fff;}
+  .btn-repair-solid:hover{background:#357a51;}
   .btn-sm{padding:9px 13px;font-size:13px;border-radius:3px;min-height:38px;}
 
   /* TABS */
@@ -258,6 +260,7 @@
       <button class="btn-ghost btn-sm" id="btnAdmin">Administration</button>
       <button class="btn-collect" id="btnToggleRemove">Enlèvement Vélocité</button>
       <button class="btn-hs-solid" id="btnToggleHs">Mettre en HS</button>
+      <button class="btn-repair-solid" id="btnToggleRepair">Marquer Réparé</button>
       <button class="btn-primary" id="btnToggleForm">+ Réceptionner des vélos</button>
     </div>
   </header>
@@ -353,6 +356,31 @@
       <div class="form-actions">
         <button class="btn-hs-solid" id="btnValidateHs">Valider la mise en HS</button>
         <button class="btn-ghost" id="btnCancelHs">Annuler</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- REPAIR PANEL -->
+  <div class="panel" id="repairPanel">
+    <h2>Marquer réparé</h2>
+    <div class="subtext">Un code par ligne. Seuls les vélos actuellement « Reçu » (en attente de réparation) passeront en « Réparé ».</div>
+    <div class="form-grid">
+      <div class="field" style="grid-column:1/-1;">
+        <label for="repairCodesEditor">Codes réparés (4 chiffres) — un par ligne, statut affiché immédiatement à droite</label>
+        <div class="line-editor-summary" id="repairPreviewSummary"></div>
+        <div class="line-editor" id="repairCodesEditor"></div>
+      </div>
+      <div class="field">
+        <label for="repairDate">Date</label>
+        <input type="date" id="repairDate">
+      </div>
+      <div class="field" style="grid-column:span 3;">
+        <label for="repairNote">Remarque (optionnel)</label>
+        <input type="text" id="repairNote" placeholder="ex: pneu et frein changés">
+      </div>
+      <div class="form-actions">
+        <button class="btn-repair-solid" id="btnValidateRepair">Valider la réparation</button>
+        <button class="btn-ghost" id="btnCancelRepair">Annuler</button>
       </div>
     </div>
   </div>
@@ -466,7 +494,7 @@
 
     <div class="panel-inline">
       <h2>Régularisation de stock</h2>
-      <div class="subtext">Force l'état d'un ou plusieurs vélos pour corriger une erreur de saisie, quel que soit leur état actuel.</div>
+      <div class="subtext">Force l'état d'un ou plusieurs vélos pour corriger une erreur de saisie, quel que soit leur état actuel. Un code inconnu du système sera directement ajouté au stock dans l'état choisi — sans passer par une réception formelle.</div>
       <div class="form-grid">
         <div class="field" style="grid-column:1/-1;">
           <label for="regulEditor">Codes à régulariser — un par ligne</label>
@@ -964,7 +992,7 @@
     entries.forEach(({code, couleur})=>{
       bikes.unshift({
         id: uid(), code, couleur: couleur||'', lieu: lieu||'',
-        etat:'recu', dateReception, note: note||'', dateRendu:null,
+        etat:'recu', dateReception, dateEntreeActuelle: dateReception, note: note||'', dateRendu:null,
         history:[{etat:'recu', date:dateReception, bon:bonNumero||''}]
       });
     });
@@ -976,11 +1004,15 @@
   function changeEtat(id, newEtat){
     const b = bikes.find(x=>x.id===id); if(!b) return;
     const ancien = ETATS[b.etat] ? ETATS[b.etat].label : b.etat;
+    const ancienEtat = b.etat;
     b.etat = newEtat;
     const now = todayISO();
     b.history.push({etat:newEtat, date:now});
     b.dateRendu = newEtat==='rendu' ? now : null;
     if(newEtat==='rendu' || newEtat==='hs') b.lieu = '';
+    if((ancienEtat==='rendu' || ancienEtat==='hs') && newEtat!=='rendu' && newEtat!=='hs'){
+      b.dateEntreeActuelle = now;
+    }
     saveBikes(); render();
     logAction('Changement état', `Vélo ${b.code} : ${ancien} → ${ETATS[newEtat].label}`);
   }
@@ -1007,7 +1039,11 @@
     opts.push({to:'rendu', label:'Rendre'});
     return opts;
   }
-  function stockDuration(b){ const end=b.dateRendu?b.dateRendu:todayISO(); return daysBetween(b.dateReception, end); }
+  function stockDuration(b){
+    const start = b.dateEntreeActuelle || b.dateReception;
+    const end = b.dateRendu ? b.dateRendu : todayISO();
+    return daysBetween(start, end);
+  }
 
   function validateRemoval(codes, removalDate, note, bonNumero){
     let count = 0;
@@ -1047,6 +1083,23 @@
     logAction('Mise en HS (lot)', `${count} vélo(s) : ${codesTraites.join(', ')}`);
     return count;
   }
+  function validateRepair(codes, date, note){
+    let count = 0;
+    const codesTraites = [];
+    codes.forEach(code=>{
+      const b = bikes.find(x=>x.code===code && (x.etat==='recu' || x.etat==='attente'));
+      if(b){
+        b.etat = 'repare';
+        b.history.push({etat:'repare', date});
+        if(note) b.note = b.note ? (b.note + ' | ' + note) : note;
+        count++;
+        codesTraites.push(code);
+      }
+    });
+    saveBikes(); render();
+    logAction('Réparation (lot)', `${count} vélo(s) marqué(s) Réparé : ${codesTraites.join(', ')}`);
+    return count;
+  }
 
   // ---------- BULK ----------
   function bulkChangeEtat(newEtat){
@@ -1055,10 +1108,14 @@
     const codesTouches = [];
     bikes.forEach(b=>{
       if(selectedIds.has(b.id)){
+        const ancienEtat = b.etat;
         b.etat = newEtat;
         b.history.push({etat:newEtat, date:now});
         b.dateRendu = newEtat==='rendu' ? now : null;
         if(newEtat==='rendu' || newEtat==='hs') b.lieu = '';
+        if((ancienEtat==='rendu' || ancienEtat==='hs') && newEtat!=='rendu' && newEtat!=='hs'){
+          b.dateEntreeActuelle = now;
+        }
         codesTouches.push(b.code);
       }
     });
@@ -1178,6 +1235,9 @@
       const noteLine = b.note ? `<div class="meta-block"><span class="label">Remarque</span><span class="value">${escapeHtml(b.note)}</span></div>` : '';
       const checked = selectedIds.has(b.id) ? 'checked' : '';
       const rowSelectedCls = selectedIds.has(b.id) ? 'selected' : '';
+      const reactive = !!(b.dateEntreeActuelle && b.dateEntreeActuelle !== b.dateReception);
+      const dateLabel = reactive ? 'En stock depuis' : 'Reçu le';
+      const dateAffichee = reactive ? b.dateEntreeActuelle : b.dateReception;
 
       const couleurOpts = ['<option value="">—</option>'].concat(
         COULEURS.map(c=>`<option value="${c}" ${c===b.couleur?'selected':''}>${c.charAt(0).toUpperCase()+c.slice(1)}</option>`)
@@ -1196,7 +1256,7 @@
         <div class="code-tag">${escapeHtml(b.code)}</div>
         <select class="mini-select couleur-${b.couleur}" data-action="couleur" data-id="${b.id}">${couleurOpts}</select>
         <select class="lieu-select" data-action="lieu" data-id="${b.id}">${lieuOpts}</select>
-        <div class="meta-block"><span class="label">Reçu le</span><span class="value">${fmtDate(b.dateReception)}</span></div>
+        <div class="meta-block"><span class="label">${dateLabel}</span><span class="value">${fmtDate(dateAffichee)}</span></div>
         <div class="meta-block"><span class="label">Temps en stock</span><span class="value duration-value ${durClass}">${dur} j</span></div>
         ${noteLine}
         <span class="state-select ${ETATS[b.etat].cls}" style="cursor:default;">${ETATS[b.etat].label}</span>
@@ -1303,9 +1363,13 @@
     bikes.some(b=>b.code===code && b.etat!=='rendu' && b.etat!=='hs')
       ? {status:'ok', label:'Prêt'} : {status:'error', label:'Introuvable en stock ou déjà HS'}
   );
+  const repairCodesEditor = createCodeEditor('repairCodesEditor', 'repairPreviewSummary', code=>
+    bikes.some(b=>b.code===code && (b.etat==='recu' || b.etat==='attente'))
+      ? {status:'ok', label:'Prêt'} : {status:'error', label:'Introuvable en état « Reçu »'}
+  );
   const regulEditor = createCodeEditor('regulEditor', 'regulSummary', code=>{
     const b = bikes.find(x=>x.code===code);
-    if(!b) return {status:'error', label:'Inconnu du système'};
+    if(!b) return {status:'ok', label:'Inconnu — sera ajouté au stock'};
     return {status:'ok', label:`Actuellement : ${ETATS[b.etat] ? ETATS[b.etat].label : b.etat}`};
   });
   const invCountEditor = createCodeEditor('invCountEditor', 'invCountSummary', code=> ({status:'ok', label:'Saisi'}));
@@ -1314,6 +1378,7 @@
   document.getElementById('btnToggleForm').addEventListener('click', ()=>{
     document.getElementById('removePanel').classList.remove('open');
     document.getElementById('hsPanel').classList.remove('open');
+    document.getElementById('repairPanel').classList.remove('open');
     const p = document.getElementById('addPanel');
     p.classList.toggle('open');
     if(p.classList.contains('open')){
@@ -1357,6 +1422,7 @@
   document.getElementById('btnToggleRemove').addEventListener('click', ()=>{
     document.getElementById('addPanel').classList.remove('open');
     document.getElementById('hsPanel').classList.remove('open');
+    document.getElementById('repairPanel').classList.remove('open');
     const p = document.getElementById('removePanel');
     p.classList.toggle('open');
     if(p.classList.contains('open')){
@@ -1399,6 +1465,7 @@
   document.getElementById('btnToggleHs').addEventListener('click', ()=>{
     document.getElementById('addPanel').classList.remove('open');
     document.getElementById('removePanel').classList.remove('open');
+    document.getElementById('repairPanel').classList.remove('open');
     const p = document.getElementById('hsPanel');
     p.classList.toggle('open');
     if(p.classList.contains('open')){
@@ -1433,14 +1500,57 @@
     alert(`${count} vélo(s) marqué(s) HS.` + (skipped>0 ? `\n${skipped} ligne(s) ignorée(s) (introuvables en stock, déjà HS, ou doublons).` : ''));
   });
 
+  // ---------- REPAIR PANEL ----------
+  document.getElementById('btnToggleRepair').addEventListener('click', ()=>{
+    document.getElementById('addPanel').classList.remove('open');
+    document.getElementById('removePanel').classList.remove('open');
+    document.getElementById('hsPanel').classList.remove('open');
+    const p = document.getElementById('repairPanel');
+    p.classList.toggle('open');
+    if(p.classList.contains('open')){
+      document.getElementById('repairDate').value = todayISO();
+      repairCodesEditor.reset();
+    }
+  });
+  document.getElementById('btnCancelRepair').addEventListener('click', ()=>{
+    const hasContent = repairCodesEditor.getAllEntered().length>0;
+    if(hasContent && !confirm('Annuler cette réparation ? La saisie en cours sera perdue.')) return;
+    repairCodesEditor.reset();
+    document.getElementById('repairNote').value='';
+    document.getElementById('repairPanel').classList.remove('open');
+  });
+  document.getElementById('btnValidateRepair').addEventListener('click', ()=>{
+    const date = document.getElementById('repairDate').value || todayISO();
+    const note = document.getElementById('repairNote').value.trim();
+
+    const okCodes = repairCodesEditor.getValidCodes();
+    const totalEntered = repairCodesEditor.getAllEntered().length;
+    if(okCodes.length===0){
+      alert("Aucun code correspondant à un vélo actuellement « Reçu ».");
+      return;
+    }
+    if(!confirm(`Confirmer le passage en « Réparé » de ${okCodes.length} vélo(s) (${fmtDate(date)}) ?`)) return;
+
+    const count = validateRepair(okCodes, date, note);
+    const skipped = totalEntered - okCodes.length;
+    repairCodesEditor.reset();
+    document.getElementById('repairNote').value='';
+    document.getElementById('repairPanel').classList.remove('open');
+    alert(`${count} vélo(s) marqué(s) Réparé.` + (skipped>0 ? `\n${skipped} ligne(s) ignorée(s) (pas en état Reçu, ou doublons).` : ''));
+  });
+
   // ---------- REGULARISATION ----------
   function forceSetEtat(code, newEtat, note){
     const b = bikes.find(x=>x.code===code);
     if(!b) return false;
+    const ancienEtat = b.etat;
     b.etat = newEtat;
     const now = todayISO();
     b.dateRendu = newEtat==='rendu' ? now : null;
     if(newEtat==='rendu' || newEtat==='hs') b.lieu = '';
+    if((ancienEtat==='rendu' || ancienEtat==='hs') && newEtat!=='rendu' && newEtat!=='hs'){
+      b.dateEntreeActuelle = now;
+    }
     b.history.push({etat:newEtat, date:now, regul:true});
     if(note) b.note = b.note ? (b.note + ' | ' + note) : note;
     return true;
@@ -1450,15 +1560,32 @@
     const date = document.getElementById('regulDate').value || todayISO();
     const note = document.getElementById('regulNote').value.trim();
     const okCodes = regulEditor.getValidCodes();
-    if(okCodes.length===0){ alert("Aucun code reconnu par le système à régulariser."); return; }
-    if(!confirm(`Confirmer la régularisation de ${okCodes.length} vélo(s) vers l'état « ${ETATS[newEtat].label} » ?`)) return;
-    let count = 0;
-    okCodes.forEach(code=>{ if(forceSetEtat(code, newEtat, note ? `Régularisation : ${note}` : 'Régularisation')) count++; });
+    if(okCodes.length===0){ alert("Aucun code à traiter."); return; }
+    const nbInconnus = okCodes.filter(code=>!bikes.some(b=>b.code===code)).length;
+    let confirmMsg = `Confirmer la régularisation de ${okCodes.length} vélo(s) vers l'état « ${ETATS[newEtat].label} » ?`;
+    if(nbInconnus>0) confirmMsg += `\n${nbInconnus} vélo(s) inconnu(s) seront créés directement dans cet état.`;
+    if(!confirm(confirmMsg)) return;
+
+    let corrected = 0, created = 0;
+    okCodes.forEach(code=>{
+      const noteFinale = note ? `Régularisation : ${note}` : 'Régularisation';
+      if(forceSetEtat(code, newEtat, noteFinale)){
+        corrected++;
+      } else {
+        bikes.unshift({
+          id: uid(), code, couleur:'', lieu:'',
+          etat: newEtat, dateReception: date, dateEntreeActuelle: date,
+          note: noteFinale, dateRendu: newEtat==='rendu' ? date : null,
+          history: [{etat:newEtat, date, regul:true}]
+        });
+        created++;
+      }
+    });
     saveBikes(); render();
-    logAction('Régularisation (lot)', `${count} vélo(s) → ${ETATS[newEtat].label} : ${okCodes.join(', ')}${note?' — '+note:''}`);
+    logAction('Régularisation (lot)', `${corrected} corrigé(s), ${created} créé(s) → ${ETATS[newEtat].label} : ${okCodes.join(', ')}${note?' — '+note:''}`);
     regulEditor.reset();
     document.getElementById('regulNote').value='';
-    alert(`${count} vélo(s) régularisé(s) vers « ${ETATS[newEtat].label} ».`);
+    alert(`${corrected} vélo(s) corrigé(s) et ${created} vélo(s) ajouté(s) au stock, vers « ${ETATS[newEtat].label} ».`);
   });
   document.getElementById('btnResetRegul').addEventListener('click', ()=>{
     regulEditor.reset();
@@ -1557,7 +1684,7 @@
           if(!confirm(`Ajouter le vélo ${code} au stock avec l'état « ${invLabel} » ?`)) return;
           bikes.unshift({
             id: uid(), code, couleur:'', lieu:'',
-            etat: target, dateReception: todayISO(), note:'Ajouté via inventaire', dateRendu: target==='rendu'?todayISO():null,
+            etat: target, dateReception: todayISO(), dateEntreeActuelle: todayISO(), note:'Ajouté via inventaire', dateRendu: target==='rendu'?todayISO():null,
             history:[{etat:target, date:todayISO(), regul:true}]
           });
           logAction('Inventaire — ajout', `Vélo ${code} ajouté au stock en ${invLabel}`);
@@ -1650,9 +1777,10 @@
 
   // ---------- EXPORT / IMPORT ----------
   document.getElementById('btnExportCsv').addEventListener('click', ()=>{
-    const rows = [['Code','Couleur','Lieu','État','Date réception','Date rendu','Temps en stock (j)','Remarque']];
+    const rows = [['Code','Couleur','Lieu','État','Date réception (origine)','En stock depuis','Date rendu','Temps en stock (j)','Remarque']];
     bikes.forEach(b=>{
       rows.push([b.code, b.couleur||'', b.lieu||'', ETATS[b.etat].label, fmtDate(b.dateReception),
+        fmtDate(b.dateEntreeActuelle||b.dateReception),
         b.dateRendu?fmtDate(b.dateRendu):'', stockDuration(b), b.note||'']);
     });
     const csv = rows.map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(';')).join('\n');
