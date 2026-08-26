@@ -1021,7 +1021,7 @@
       bikes.unshift({
         id: uid(), code, couleur: couleur||'', lieu: lieu||'',
         etat:'recu', dateReception, dateEntreeActuelle: dateReception, note: note||'', dateRendu:null,
-        history:[{etat:'recu', date:dateReception, bon:bonNumero||''}]
+        history:[{etat:'recu', date:dateReception, bon:bonNumero||'', user: currentUser ? currentUser.nom : 'Inconnu'}]
       });
     });
     recordBon('reception', bonNumero, dateReception, entries.map(e=>e.code), note);
@@ -1035,7 +1035,7 @@
     const ancienEtat = b.etat;
     b.etat = newEtat;
     const now = todayISO();
-    b.history.push({etat:newEtat, date:now});
+    b.history.push({etat:newEtat, date:now, user: currentUser ? currentUser.nom : 'Inconnu'});
     b.dateRendu = newEtat==='rendu' ? now : null;
     if(newEtat==='rendu' || newEtat==='hs') b.lieu = '';
     if((ancienEtat==='rendu' || ancienEtat==='hs') && newEtat!=='rendu' && newEtat!=='hs'){
@@ -1082,7 +1082,7 @@
         b.etat = 'rendu';
         b.dateRendu = removalDate;
         b.lieu = '';
-        b.history.push({etat:'rendu', date:removalDate, bon:bonNumero||''});
+        b.history.push({etat:'rendu', date:removalDate, bon:bonNumero||'', user: currentUser ? currentUser.nom : 'Inconnu'});
         if(note) b.note = b.note ? (b.note + ' | ' + note) : note;
         count++;
         codesTraites.push(code);
@@ -1101,7 +1101,7 @@
       if(b){
         b.etat = 'hs';
         b.lieu = '';
-        b.history.push({etat:'hs', date});
+        b.history.push({etat:'hs', date, user: currentUser ? currentUser.nom : 'Inconnu'});
         if(note) b.note = b.note ? (b.note + ' | ' + note) : note;
         count++;
         codesTraites.push(code);
@@ -1118,7 +1118,7 @@
       const b = bikes.find(x=>x.code===code && (x.etat==='recu' || x.etat==='attente'));
       if(b){
         b.etat = 'repare';
-        b.history.push({etat:'repare', date});
+        b.history.push({etat:'repare', date, user: currentUser ? currentUser.nom : 'Inconnu'});
         if(note) b.note = b.note ? (b.note + ' | ' + note) : note;
         count++;
         codesTraites.push(code);
@@ -1138,7 +1138,7 @@
       if(selectedIds.has(b.id)){
         const ancienEtat = b.etat;
         b.etat = newEtat;
-        b.history.push({etat:newEtat, date:now});
+        b.history.push({etat:newEtat, date:now, user: currentUser ? currentUser.nom : 'Inconnu'});
         b.dateRendu = newEtat==='rendu' ? now : null;
         if(newEtat==='rendu' || newEtat==='hs') b.lieu = '';
         if((ancienEtat==='rendu' || ancienEtat==='hs') && newEtat!=='rendu' && newEtat!=='hs'){
@@ -1259,7 +1259,7 @@
       let durClass = '';
       if(b.etat!=='rendu'){ if(dur>=30) durClass='alert'; else if(dur>=14) durClass='warn'; }
       const opened = openHistoryIds.has(b.id);
-      const histItems = b.history.map(h=>`<li>${ETATS[h.etat].label} — ${fmtDate(h.date)}${h.bon?` (bon ${escapeHtml(h.bon)})`:''}</li>`).join('');
+      const histItems = b.history.map(h=>`<li>${ETATS[h.etat].label} — ${fmtDate(h.date)}${h.bon?` (bon ${escapeHtml(h.bon)})`:''}${h.user?` — ${escapeHtml(h.user)}`:''}</li>`).join('');
       const noteLine = b.note ? `<div class="meta-block"><span class="label">Remarque</span><span class="value">${escapeHtml(b.note)}</span></div>` : '';
       const checked = selectedIds.has(b.id) ? 'checked' : '';
       const rowSelectedCls = selectedIds.has(b.id) ? 'selected' : '';
@@ -1583,7 +1583,7 @@
     if((ancienEtat==='rendu' || ancienEtat==='hs') && newEtat!=='rendu' && newEtat!=='hs'){
       b.dateEntreeActuelle = now;
     }
-    b.history.push({etat:newEtat, date:now, regul:true});
+    b.history.push({etat:newEtat, date:now, regul:true, user: currentUser ? currentUser.nom : 'Inconnu'});
     if(note) b.note = b.note ? (b.note + ' | ' + note) : note;
     return true;
   }
@@ -1608,7 +1608,7 @@
           id: uid(), code, couleur:'', lieu:'',
           etat: newEtat, dateReception: date, dateEntreeActuelle: date,
           note: noteFinale, dateRendu: newEtat==='rendu' ? date : null,
-          history: [{etat:newEtat, date, regul:true}]
+          history: [{etat:newEtat, date, regul:true, user: currentUser ? currentUser.nom : 'Inconnu'}]
         });
         created++;
       }
@@ -1717,7 +1717,7 @@
           bikes.unshift({
             id: uid(), code, couleur:'', lieu:'',
             etat: target, dateReception: todayISO(), dateEntreeActuelle: todayISO(), note:'Ajouté via inventaire', dateRendu: target==='rendu'?todayISO():null,
-            history:[{etat:target, date:todayISO(), regul:true}]
+            history:[{etat:target, date:todayISO(), regul:true, user: currentUser ? currentUser.nom : 'Inconnu'}]
           });
           logAction('Inventaire — ajout', `Vélo ${code} ajouté au stock en ${invLabel}`);
         }
@@ -1768,7 +1768,7 @@
     }
 
     el.innerHTML = matches.map(b=>{
-      const histItems = b.history.map(h=>`<li>${ETATS[h.etat] ? ETATS[h.etat].label : h.etat} — ${fmtDate(h.date)}${h.bon?` (bon ${escapeHtml(h.bon)})`:''}</li>`).join('');
+      const histItems = b.history.map(h=>`<li>${ETATS[h.etat] ? ETATS[h.etat].label : h.etat} — ${fmtDate(h.date)}${h.bon?` (bon ${escapeHtml(h.bon)})`:''}${h.user?` — ${escapeHtml(h.user)}`:''}</li>`).join('');
       return `
       <div class="hist-card ${b.couleur?'color-'+b.couleur:''}">
         <div class="hist-card-head">
