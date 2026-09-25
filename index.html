@@ -252,6 +252,9 @@
   .lieu-admin-item input{flex:1;padding:10px 10px;border:1px solid var(--border-strong);border-radius:3px;font-size:16px;min-height:42px;min-width:140px;}
   .modal-close-row{display:flex;justify-content:flex-end;gap:8px;margin-top:18px;}
   .modal-error{color:var(--danger);font-size:12.5px;margin-top:6px;display:none;}
+  .alert-banner{background:#FCEEEA;border:1px solid #E2A199;color:#8a3324;padding:11px 16px;border-radius:4px;margin:0 0 14px;font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px;}
+  .stat-chart-wrap{width:100%;overflow-x:auto;margin-top:6px;}
+  .stat-chart-wrap svg{display:block;}
 </style>
 </head>
 <body>
@@ -274,9 +277,12 @@
     </div>
   </header>
 
+  <div class="alert-banner" id="stockAlertBanner" style="display:none;"></div>
+
   <div class="tabs">
     <button class="tab-btn active" data-tab="stock">Stock actuel</button>
     <button class="tab-btn" data-tab="indicateurs">Indicateurs</button>
+    <button class="tab-btn" data-tab="statistiques">Statistiques</button>
     <button class="tab-btn" data-tab="bons">Bons émis</button>
     <button class="tab-btn" data-tab="inventaire">Inventaire</button>
     <button class="tab-btn" data-tab="journal">Journal</button>
@@ -373,7 +379,7 @@
   <!-- REPAIR PANEL -->
   <div class="panel" id="repairPanel">
     <h2>Marquer réparé</h2>
-    <div class="subtext">Un code par ligne. Seuls les vélos actuellement « Reçu » (en attente de réparation) passeront en « Réparé ».</div>
+    <div class="subtext">Un code par ligne. Seuls les vélos actuellement « En stock » (non réparé) passeront en « Réparé ».</div>
     <div class="form-grid">
       <div class="field" style="grid-column:1/-1;">
         <label for="repairCodesEditor">Codes réparés (4 chiffres) — un par ligne, statut affiché immédiatement à droite</label>
@@ -400,9 +406,9 @@
     <div class="filters">
       <div class="filter-group">
         <span class="fg-label">État</span>
-        <span class="chip active" data-filter="etat" data-v="enstock">En stock</span>
+        <span class="chip active" data-filter="etat" data-v="enstock">Tout en stock</span>
         <span class="chip" data-filter="etat" data-v="tous">Tous</span>
-        <span class="chip" data-filter="etat" data-v="recu">Reçu</span>
+        <span class="chip" data-filter="etat" data-v="recu">En stock (non réparé)</span>
         <span class="chip" data-filter="etat" data-v="repare">Réparé</span>
         <span class="chip" data-filter="etat" data-v="rendu">Rendu</span>
         <span class="chip" data-filter="etat" data-v="hs">HS</span>
@@ -460,6 +466,125 @@
     <section class="lieu-row" id="lieuRow"></section>
   </div>
 
+  <!-- TAB: STATISTIQUES -->
+  <div class="tab-content" id="tabStatistiques">
+    <div class="panel-inline">
+      <h2>Volume en stock</h2>
+      <div class="subtext">Nombre de vélos en stock (« En stock » + « Réparé », hors Rendu/HS) à une date donnée, recalculé à partir de l'historique de chaque vélo.</div>
+      <div class="form-grid">
+        <div class="field">
+          <label for="statStockDate">Date précise</label>
+          <input type="date" id="statStockDate">
+        </div>
+        <div class="field" style="grid-column:span 3;">
+          <label>Vélos en stock à cette date</label>
+          <div class="lieu-card" id="statStockDateResult" style="width:100%;">—</div>
+        </div>
+        <div class="field">
+          <label for="statStockStart">Période — du</label>
+          <input type="date" id="statStockStart">
+        </div>
+        <div class="field">
+          <label for="statStockEnd">au</label>
+          <input type="date" id="statStockEnd">
+        </div>
+        <div class="field" style="grid-column:span 2;">
+          <label>Moyenne du stock sur la période</label>
+          <div class="lieu-card" id="statStockAvgResult" style="width:100%;">—</div>
+        </div>
+        <div class="form-actions">
+          <button class="btn-primary" id="btnStatStockCompute">Calculer / mettre à jour le graphique</button>
+          <button class="btn-ghost" id="btnStatStockExport">Exporter CSV (détail par jour)</button>
+        </div>
+        <div class="field" style="grid-column:1/-1;">
+          <label>Évolution du volume en stock sur la période</label>
+          <div class="stat-chart-wrap" id="statStockChart"></div>
+        </div>
+      </div>
+      <h3 style="margin-top:22px;">Alerte de volume en stock</h3>
+      <div class="subtext">Un message s'affiche en haut de l'application dès que le nombre de vélos en stock atteint ou dépasse ce seuil. Laisser vide pour désactiver l'alerte.</div>
+      <div class="form-grid">
+        <div class="field">
+          <label for="statAlertThreshold">Seuil d'alerte (nombre de vélos en stock)</label>
+          <input type="number" id="statAlertThreshold" min="0" placeholder="ex : 80">
+        </div>
+        <div class="form-actions">
+          <button class="btn-primary" id="btnStatAlertSave">Enregistrer le seuil</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel-inline">
+      <h2>Entrées — réceptions</h2>
+      <div class="subtext">Nombre de vélos réceptionnés, calculé à partir des bons de réception émis.</div>
+      <div class="form-grid">
+        <div class="field">
+          <label for="statInDate">Date précise</label>
+          <input type="date" id="statInDate">
+        </div>
+        <div class="field" style="grid-column:span 3;">
+          <label>Vélos entrés à cette date</label>
+          <div class="lieu-card" id="statInDateResult" style="width:100%;">—</div>
+        </div>
+        <div class="field">
+          <label for="statInStart">Période — du</label>
+          <input type="date" id="statInStart">
+        </div>
+        <div class="field">
+          <label for="statInEnd">au</label>
+          <input type="date" id="statInEnd">
+        </div>
+        <div class="field" style="grid-column:span 2;">
+          <label>Moyenne d'entrées / jour sur la période</label>
+          <div class="lieu-card" id="statInAvgResult" style="width:100%;">—</div>
+        </div>
+        <div class="form-actions">
+          <button class="btn-primary" id="btnStatInCompute">Calculer / mettre à jour le graphique</button>
+          <button class="btn-ghost" id="btnStatInExport">Exporter CSV (détail par jour)</button>
+        </div>
+        <div class="field" style="grid-column:1/-1;">
+          <label>Évolution des entrées sur la période</label>
+          <div class="stat-chart-wrap" id="statInChart"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel-inline">
+      <h2>Sorties — enlèvements</h2>
+      <div class="subtext">Nombre de vélos enlevés (rendus), calculé à partir des bons d'enlèvement émis.</div>
+      <div class="form-grid">
+        <div class="field">
+          <label for="statOutDate">Date précise</label>
+          <input type="date" id="statOutDate">
+        </div>
+        <div class="field" style="grid-column:span 3;">
+          <label>Vélos sortis à cette date</label>
+          <div class="lieu-card" id="statOutDateResult" style="width:100%;">—</div>
+        </div>
+        <div class="field">
+          <label for="statOutStart">Période — du</label>
+          <input type="date" id="statOutStart">
+        </div>
+        <div class="field">
+          <label for="statOutEnd">au</label>
+          <input type="date" id="statOutEnd">
+        </div>
+        <div class="field" style="grid-column:span 2;">
+          <label>Moyenne de sorties / jour sur la période</label>
+          <div class="lieu-card" id="statOutAvgResult" style="width:100%;">—</div>
+        </div>
+        <div class="form-actions">
+          <button class="btn-primary" id="btnStatOutCompute">Calculer / mettre à jour le graphique</button>
+          <button class="btn-ghost" id="btnStatOutExport">Exporter CSV (détail par jour)</button>
+        </div>
+        <div class="field" style="grid-column:1/-1;">
+          <label>Évolution des sorties sur la période</label>
+          <div class="stat-chart-wrap" id="statOutChart"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- TAB: BONS -->
   <div class="tab-content" id="tabBons">
     <div class="bike-list" id="bonsList"></div>
@@ -479,7 +604,7 @@
         <div class="field">
           <label for="invEtat">État à inventorier</label>
           <select id="invEtat">
-            <option value="recu">Reçu</option>
+            <option value="recu">En stock</option>
             <option value="repare">Réparé</option>
             <option value="hs">HS</option>
             <option value="enstock">Tous les vélos en stock (hors Rendu/HS)</option>
@@ -514,7 +639,7 @@
         <div class="field">
           <label for="regulEtat">Nouvel état</label>
           <select id="regulEtat">
-            <option value="recu">Reçu</option>
+            <option value="recu">En stock</option>
             <option value="repare">Réparé</option>
             <option value="rendu">Rendu</option>
             <option value="hs">HS</option>
@@ -624,7 +749,7 @@
   function switchTab(key){
     document.querySelectorAll('.tab-btn').forEach(b=>b.classList.toggle('active', b.dataset.tab===key));
     document.querySelectorAll('.tab-content').forEach(c=>c.classList.remove('active'));
-    const map = {stock:'tabStock', indicateurs:'tabIndicateurs', bons:'tabBons', inventaire:'tabInventaire', journal:'tabJournal', historique:'tabHistorique'};
+    const map = {stock:'tabStock', indicateurs:'tabIndicateurs', statistiques:'tabStatistiques', bons:'tabBons', inventaire:'tabInventaire', journal:'tabJournal', historique:'tabHistorique'};
     const target = document.getElementById(map[key]);
     if(target) target.classList.add('active');
   }
@@ -667,7 +792,7 @@
   }
 
   const ETATS = {
-    recu:      {label:'Reçu',                cls:'st-recu'},
+    recu:      {label:'En stock',            cls:'st-recu'},
     attente:   {label:'Attente réparation',  cls:'st-attente'},
     repare:    {label:'Réparé',              cls:'st-repare'},
     rendu:     {label:'Rendu',               cls:'st-rendu'},
@@ -682,6 +807,7 @@
   let users = [];
   let journal = [];
   let currentUser = null;
+  let stockAlertThreshold = null;
   const SESSION_KEY = 'velocite_session_v1';
 
   let filterEtat = 'enstock';
@@ -871,6 +997,18 @@
     });
 
     fbdb.ref(FB_PREFIX+'/journal').on('value', snap=>{ journal = toArr(snap.val()); renderJournalTab(); });
+
+    fbdb.ref(FB_PREFIX+'/stockAlertThreshold').on('value', snap=>{
+      const v = snap.val();
+      stockAlertThreshold = (v===null || v===undefined || v==='') ? null : Number(v);
+      const inp = document.getElementById('statAlertThreshold');
+      if(inp && document.activeElement!==inp) inp.value = (stockAlertThreshold===null ? '' : stockAlertThreshold);
+      renderStockAlertBanner();
+    });
+  }
+  function saveStockAlertThreshold(){
+    if(fbdb) fbdb.ref(FB_PREFIX+'/stockAlertThreshold').set(stockAlertThreshold);
+    mirrorSet(FB_PREFIX+'/stockAlertThreshold', stockAlertThreshold);
   }
 
   function uid(){ return 'b_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2,8); }
@@ -1208,12 +1346,90 @@
     return map;
   }
 
+  // ---------- STATISTIQUES AVANCÉES (stock / entrées / sorties dans le temps) ----------
+  function etatOnDate(b, dateISO){
+    const events = (b.history||[]).slice().sort((x,y)=> x.date.localeCompare(y.date));
+    let etat = null;
+    for(const h of events){
+      if(h.date <= dateISO) etat = h.etat; else break;
+    }
+    return etat;
+  }
+  function stockCountOnDate(dateISO){
+    let n = 0;
+    bikes.forEach(b=>{
+      const etat = etatOnDate(b, dateISO);
+      if(etat && etat!=='rendu' && etat!=='hs') n++;
+    });
+    return n;
+  }
+  function entriesCountOnDate(dateISO){
+    return bonsHistory.filter(bo=> bo.type==='reception' && bo.date===dateISO).reduce((s,bo)=>s+(bo.nbVelos||0),0);
+  }
+  function exitsCountOnDate(dateISO){
+    return bonsHistory.filter(bo=> bo.type==='enlevement' && bo.date===dateISO).reduce((s,bo)=>s+(bo.nbVelos||0),0);
+  }
+  function dateRangeArray(startISO, endISO){
+    const out = [];
+    if(!startISO || !endISO || startISO>endISO) return out;
+    const [sy,sm,sd] = startISO.split('-').map(Number);
+    const [ey,em,ed] = endISO.split('-').map(Number);
+    let t = Date.UTC(sy, sm-1, sd);
+    const endT = Date.UTC(ey, em-1, ed);
+    let guard = 0;
+    while(t<=endT && guard<732){
+      out.push(new Date(t).toISOString().slice(0,10));
+      t += 86400000;
+      guard++;
+    }
+    return out;
+  }
+  function seriesForRange(kind, startISO, endISO){
+    return dateRangeArray(startISO, endISO).map(dt=>({
+      date: dt,
+      value: kind==='stock' ? stockCountOnDate(dt) : (kind==='entrees' ? entriesCountOnDate(dt) : exitsCountOnDate(dt))
+    }));
+  }
+  function average(arr){ return arr.length ? (arr.reduce((s,v)=>s+v,0)/arr.length) : null; }
+
+  function renderStatChart(containerId, series, color){
+    const el = document.getElementById(containerId);
+    if(!el) return;
+    if(!series.length){ el.innerHTML = '<div class="subtext">Choisissez une période valide et cliquez sur « Calculer ».</div>'; return; }
+    const w = Math.max(320, series.length*26), h = 170, padL=32, padB=22, padT=10, padR=8;
+    const max = Math.max(1, ...series.map(s=>s.value));
+    const innerW = w-padL-padR;
+    const barW = innerW/series.length;
+    const bars = series.map((s,i)=>{
+      const bh = (s.value/max)*(h-padT-padB);
+      const x = padL + i*barW;
+      const y = h-padB-bh;
+      return `<rect x="${(x+1).toFixed(1)}" y="${y.toFixed(1)}" width="${Math.max(1,barW-2).toFixed(1)}" height="${bh.toFixed(1)}" fill="${color}" rx="1"><title>${fmtDate(s.date)} : ${s.value}</title></rect>`;
+    }).join('');
+    const midLabelIdx = Math.floor(series.length/2);
+    const xlabels = `<text x="${padL}" y="${h-6}" font-size="10" fill="#8a8a80">${fmtDate(series[0].date)}</text>` +
+      (series.length>1 ? `<text x="${w-padR}" y="${h-6}" font-size="10" fill="#8a8a80" text-anchor="end">${fmtDate(series[series.length-1].date)}</text>` : '');
+    const ylabels = `<text x="2" y="${h-padB}" font-size="10" fill="#8a8a80">0</text><text x="2" y="${padT+9}" font-size="10" fill="#8a8a80">${max}</text>`;
+    el.innerHTML = `<svg viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" style="max-width:100%;">
+      <line x1="${padL}" y1="${padT}" x2="${padL}" y2="${h-padB}" stroke="#d8d6c9"/>
+      <line x1="${padL}" y1="${h-padB}" x2="${w-padR}" y2="${h-padB}" stroke="#d8d6c9"/>
+      ${bars}${xlabels}${ylabels}
+    </svg>`;
+  }
+
+  function exportStatCSV(filename, series, colLabel){
+    const rows = [['Date', colLabel]];
+    series.forEach(s=> rows.push([fmtDate(s.date), s.value]));
+    const csv = rows.map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(';')).join('\n');
+    downloadBlob(new Blob(['﻿'+csv], {type:'text/csv;charset=utf-8;'}), filename);
+  }
+
   // ---------- RENDER ----------
   function renderStats(){
     const s = computeStats();
     document.getElementById('statsRow').innerHTML = `
       <div class="stat-card total"><div class="stat-num">${s.total}</div><div class="stat-label">Total suivi</div></div>
-      <div class="stat-card"><div class="stat-num">${s.counts.recu}</div><div class="stat-label">Reçus</div></div>
+      <div class="stat-card"><div class="stat-num">${s.counts.recu}</div><div class="stat-label">En stock</div></div>
       <div class="stat-card repare"><div class="stat-num">${s.counts.repare}</div><div class="stat-label">Réparés</div></div>
       <div class="stat-card rendu"><div class="stat-num">${s.counts.rendu}</div><div class="stat-label">Rendus</div></div>
       <div class="stat-card hs"><div class="stat-num">${s.counts.hs}</div><div class="stat-label">HS</div></div>
@@ -1396,6 +1612,24 @@
     renderList();
     renderBonsTab();
     if(document.getElementById('invEtat')) updateInvExpectedSummary();
+    renderStockAlertBanner();
+    if(document.getElementById('statStockDate')){
+      computeStockStatSection();
+      computeInStatSection();
+      computeOutStatSection();
+    }
+  }
+  function renderStockAlertBanner(){
+    const el = document.getElementById('stockAlertBanner');
+    if(!el) return;
+    const current = bikes.filter(b=>b.etat!=='rendu' && b.etat!=='hs').length;
+    if(stockAlertThreshold!==null && !isNaN(stockAlertThreshold) && current>=stockAlertThreshold){
+      el.style.display = 'flex';
+      el.textContent = `⚠ Volume en stock élevé : ${current} vélo(s) en stock, seuil d'alerte fixé à ${stockAlertThreshold}.`;
+    } else {
+      el.style.display = 'none';
+      el.textContent = '';
+    }
   }
 
   // ---------- LINE EDITORS INIT ----------
@@ -1411,7 +1645,7 @@
   );
   const repairCodesEditor = createCodeEditor('repairCodesEditor', 'repairPreviewSummary', code=>
     bikes.some(b=>b.code===code && (b.etat==='recu' || b.etat==='attente'))
-      ? {status:'ok', label:'Prêt'} : {status:'error', label:'Introuvable en état « Reçu »'}
+      ? {status:'ok', label:'Prêt'} : {status:'error', label:'Introuvable en état « En stock »'}
   );
   const regulEditor = createCodeEditor('regulEditor', 'regulSummary', code=>{
     const b = bikes.find(x=>x.code===code);
@@ -1583,7 +1817,7 @@
     const okCodes = repairCodesEditor.getValidCodes();
     const totalEntered = repairCodesEditor.getAllEntered().length;
     if(okCodes.length===0){
-      alert("Aucun code correspondant à un vélo actuellement « Reçu ».");
+      alert("Aucun code correspondant à un vélo actuellement « En stock ».");
       return;
     }
     if(!confirm(`Confirmer le passage en « Réparé » de ${okCodes.length} vélo(s) (${fmtDate(date)}) ?`)) return;
@@ -1593,7 +1827,7 @@
     repairCodesEditor.reset();
     document.getElementById('repairNote').value='';
     document.getElementById('repairPanel').classList.remove('open');
-    alert(`${count} vélo(s) marqué(s) Réparé.` + (skipped>0 ? `\n${skipped} ligne(s) ignorée(s) (pas en état Reçu, ou doublons).` : ''));
+    alert(`${count} vélo(s) marqué(s) Réparé.` + (skipped>0 ? `\n${skipped} ligne(s) ignorée(s) (pas en état En stock, ou doublons).` : ''));
   });
 
   // ---------- REGULARISATION ----------
@@ -1930,6 +2164,77 @@
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
     URL.revokeObjectURL(url);
   }
+
+  // ---------- STATISTIQUES UI ----------
+  (function initStatsTab(){
+    const todayD = todayISO();
+    const past30 = (()=>{ const d=new Date(); d.setDate(d.getDate()-29); return d.toISOString().slice(0,10); })();
+    ['statStockDate','statInDate','statOutDate'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value = todayD; });
+    ['statStockStart','statInStart','statOutStart'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value = past30; });
+    ['statStockEnd','statInEnd','statOutEnd'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value = todayD; });
+  })();
+
+  function computeStockStatSection(){
+    const dt = document.getElementById('statStockDate').value;
+    document.getElementById('statStockDateResult').innerHTML = dt ? `<b>${stockCountOnDate(dt)}</b> vélo(s) en stock au ${fmtDate(dt)}` : '—';
+    const start = document.getElementById('statStockStart').value;
+    const end = document.getElementById('statStockEnd').value;
+    const series = seriesForRange('stock', start, end);
+    const avg = average(series.map(s=>s.value));
+    document.getElementById('statStockAvgResult').innerHTML = avg===null ? '—' : `<b>${avg.toFixed(1)}</b> vélo(s) en moyenne, du ${fmtDate(start)} au ${fmtDate(end)}`;
+    renderStatChart('statStockChart', series, '#2f5233');
+    return series;
+  }
+  document.getElementById('btnStatStockCompute').addEventListener('click', computeStockStatSection);
+  document.getElementById('statStockDate').addEventListener('change', computeStockStatSection);
+  document.getElementById('btnStatStockExport').addEventListener('click', ()=>{
+    const series = computeStockStatSection();
+    exportStatCSV(`velocite-stock-volume-${todayISO()}.csv`, series, 'Vélos en stock');
+  });
+
+  document.getElementById('btnStatAlertSave').addEventListener('click', ()=>{
+    const raw = document.getElementById('statAlertThreshold').value.trim();
+    stockAlertThreshold = raw==='' ? null : Math.max(0, parseInt(raw,10)||0);
+    saveStockAlertThreshold();
+    renderStockAlertBanner();
+    alert(stockAlertThreshold===null ? "Alerte désactivée." : `Alerte activée à partir de ${stockAlertThreshold} vélo(s) en stock.`);
+  });
+
+  function computeInStatSection(){
+    const dt = document.getElementById('statInDate').value;
+    document.getElementById('statInDateResult').innerHTML = dt ? `<b>${entriesCountOnDate(dt)}</b> vélo(s) entré(s) le ${fmtDate(dt)}` : '—';
+    const start = document.getElementById('statInStart').value;
+    const end = document.getElementById('statInEnd').value;
+    const series = seriesForRange('entrees', start, end);
+    const avg = average(series.map(s=>s.value));
+    document.getElementById('statInAvgResult').innerHTML = avg===null ? '—' : `<b>${avg.toFixed(2)}</b> vélo(s) / jour en moyenne, du ${fmtDate(start)} au ${fmtDate(end)}`;
+    renderStatChart('statInChart', series, '#1f6f78');
+    return series;
+  }
+  document.getElementById('btnStatInCompute').addEventListener('click', computeInStatSection);
+  document.getElementById('statInDate').addEventListener('change', computeInStatSection);
+  document.getElementById('btnStatInExport').addEventListener('click', ()=>{
+    const series = computeInStatSection();
+    exportStatCSV(`velocite-entrees-${todayISO()}.csv`, series, 'Vélos entrés');
+  });
+
+  function computeOutStatSection(){
+    const dt = document.getElementById('statOutDate').value;
+    document.getElementById('statOutDateResult').innerHTML = dt ? `<b>${exitsCountOnDate(dt)}</b> vélo(s) sorti(s) le ${fmtDate(dt)}` : '—';
+    const start = document.getElementById('statOutStart').value;
+    const end = document.getElementById('statOutEnd').value;
+    const series = seriesForRange('sorties', start, end);
+    const avg = average(series.map(s=>s.value));
+    document.getElementById('statOutAvgResult').innerHTML = avg===null ? '—' : `<b>${avg.toFixed(2)}</b> vélo(s) / jour en moyenne, du ${fmtDate(start)} au ${fmtDate(end)}`;
+    renderStatChart('statOutChart', series, '#8a4b1f');
+    return series;
+  }
+  document.getElementById('btnStatOutCompute').addEventListener('click', computeOutStatSection);
+  document.getElementById('statOutDate').addEventListener('change', computeOutStatSection);
+  document.getElementById('btnStatOutExport').addEventListener('click', ()=>{
+    const series = computeOutStatSection();
+    exportStatCSV(`velocite-sorties-${todayISO()}.csv`, series, 'Vélos sortis');
+  });
 
   // ---------- ADMIN ----------
   const adminOverlay = document.getElementById('adminOverlay');
