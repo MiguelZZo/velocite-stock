@@ -489,8 +489,12 @@
           <input type="date" id="statStockEnd">
         </div>
         <div class="field" style="grid-column:span 2;">
-          <label>Moyenne du stock sur la période</label>
+          <label>Moyenne du stock sur la période (jours ouvrés, lun–ven)</label>
           <div class="lieu-card" id="statStockAvgResult" style="width:100%;">—</div>
+        </div>
+        <div class="field" style="grid-column:1/-1;">
+          <label>Volume global de la période</label>
+          <div class="lieu-card" id="statStockGlobalResult" style="width:100%;">—</div>
         </div>
         <div class="form-actions">
           <button class="btn-primary" id="btnStatStockCompute">Calculer / mettre à jour le graphique</button>
@@ -535,8 +539,12 @@
           <input type="date" id="statInEnd">
         </div>
         <div class="field" style="grid-column:span 2;">
-          <label>Moyenne d'entrées / jour sur la période</label>
+          <label>Moyenne d'entrées / jour ouvré sur la période (lun–ven)</label>
           <div class="lieu-card" id="statInAvgResult" style="width:100%;">—</div>
+        </div>
+        <div class="field" style="grid-column:1/-1;">
+          <label>Volume global des entrées sur la période</label>
+          <div class="lieu-card" id="statInGlobalResult" style="width:100%;">—</div>
         </div>
         <div class="form-actions">
           <button class="btn-primary" id="btnStatInCompute">Calculer / mettre à jour le graphique</button>
@@ -570,8 +578,12 @@
           <input type="date" id="statOutEnd">
         </div>
         <div class="field" style="grid-column:span 2;">
-          <label>Moyenne de sorties / jour sur la période</label>
+          <label>Moyenne de sorties / jour ouvré sur la période (lun–ven)</label>
           <div class="lieu-card" id="statOutAvgResult" style="width:100%;">—</div>
+        </div>
+        <div class="field" style="grid-column:1/-1;">
+          <label>Volume global des sorties sur la période</label>
+          <div class="lieu-card" id="statOutGlobalResult" style="width:100%;">—</div>
         </div>
         <div class="form-actions">
           <button class="btn-primary" id="btnStatOutCompute">Calculer / mettre à jour le graphique</button>
@@ -1384,8 +1396,13 @@
     }
     return out;
   }
+  function isWeekday(dateISO){
+    const wd = new Date(dateISO+'T00:00:00Z').getUTCDay();
+    return wd!==0 && wd!==6;
+  }
+  // Jours ouvrés uniquement (lundi–vendredi) : base de la moyenne, du graphique et de l'export
   function seriesForRange(kind, startISO, endISO){
-    return dateRangeArray(startISO, endISO).map(dt=>({
+    return dateRangeArray(startISO, endISO).filter(isWeekday).map(dt=>({
       date: dt,
       value: kind==='stock' ? stockCountOnDate(dt) : (kind==='entrees' ? entriesCountOnDate(dt) : exitsCountOnDate(dt))
     }));
@@ -2181,7 +2198,12 @@
     const end = document.getElementById('statStockEnd').value;
     const series = seriesForRange('stock', start, end);
     const avg = average(series.map(s=>s.value));
-    document.getElementById('statStockAvgResult').innerHTML = avg===null ? '—' : `<b>${avg.toFixed(1)}</b> vélo(s) en moyenne, du ${fmtDate(start)} au ${fmtDate(end)}`;
+    document.getElementById('statStockAvgResult').innerHTML = avg===null ? '—' : `<b>${avg.toFixed(1)}</b> vélo(s) en moyenne sur ${series.length} jour(s) ouvré(s), du ${fmtDate(start)} au ${fmtDate(end)}`;
+    const gEl = document.getElementById('statStockGlobalResult');
+    if(start && end && start<=end){
+      const vals = series.map(s=>s.value);
+      gEl.innerHTML = `Début (${fmtDate(start)}) : <b>${stockCountOnDate(start)}</b> · Fin (${fmtDate(end)}) : <b>${stockCountOnDate(end)}</b> · Variation : <b>${stockCountOnDate(end)-stockCountOnDate(start)>0?'+':''}${stockCountOnDate(end)-stockCountOnDate(start)}</b>` + (vals.length ? ` · Min : <b>${Math.min(...vals)}</b> · Max : <b>${Math.max(...vals)}</b>` : '');
+    } else gEl.textContent = '—';
     renderStatChart('statStockChart', series, '#2f5233');
     return series;
   }
@@ -2207,7 +2229,9 @@
     const end = document.getElementById('statInEnd').value;
     const series = seriesForRange('entrees', start, end);
     const avg = average(series.map(s=>s.value));
-    document.getElementById('statInAvgResult').innerHTML = avg===null ? '—' : `<b>${avg.toFixed(2)}</b> vélo(s) / jour en moyenne, du ${fmtDate(start)} au ${fmtDate(end)}`;
+    document.getElementById('statInAvgResult').innerHTML = avg===null ? '—' : `<b>${avg.toFixed(2)}</b> vélo(s) / jour ouvré en moyenne sur ${series.length} jour(s) ouvré(s), du ${fmtDate(start)} au ${fmtDate(end)}`;
+    const totalAll = dateRangeArray(start, end).reduce((s,d)=>s+entriesCountOnDate(d),0);
+    document.getElementById('statInGlobalResult').innerHTML = (start && end && start<=end) ? `<b>${totalAll}</b> vélo(s) entré(s) du ${fmtDate(start)} au ${fmtDate(end)} (tous jours confondus)` : '—';
     renderStatChart('statInChart', series, '#1f6f78');
     return series;
   }
@@ -2225,7 +2249,9 @@
     const end = document.getElementById('statOutEnd').value;
     const series = seriesForRange('sorties', start, end);
     const avg = average(series.map(s=>s.value));
-    document.getElementById('statOutAvgResult').innerHTML = avg===null ? '—' : `<b>${avg.toFixed(2)}</b> vélo(s) / jour en moyenne, du ${fmtDate(start)} au ${fmtDate(end)}`;
+    document.getElementById('statOutAvgResult').innerHTML = avg===null ? '—' : `<b>${avg.toFixed(2)}</b> vélo(s) / jour ouvré en moyenne sur ${series.length} jour(s) ouvré(s), du ${fmtDate(start)} au ${fmtDate(end)}`;
+    const totalAll = dateRangeArray(start, end).reduce((s,d)=>s+exitsCountOnDate(d),0);
+    document.getElementById('statOutGlobalResult').innerHTML = (start && end && start<=end) ? `<b>${totalAll}</b> vélo(s) sorti(s) du ${fmtDate(start)} au ${fmtDate(end)} (tous jours confondus)` : '—';
     renderStatChart('statOutChart', series, '#8a4b1f');
     return series;
   }
