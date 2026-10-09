@@ -274,6 +274,7 @@
       <button class="btn-hs-solid" id="btnToggleHs">Mettre en HS</button>
       <button class="btn-repair-solid" id="btnToggleRepair">Marquer Réparé</button>
       <button class="btn-primary" id="btnToggleForm">+ Réceptionner des vélos</button>
+      <button class="btn-primary" id="btnToggleExpo" style="background:#5b4a8a;border-color:#5b4a8a;">+ Réceptionner des vélos parc expo</button>
     </div>
   </header>
 
@@ -282,6 +283,7 @@
   <div class="tabs">
     <button class="tab-btn active" data-tab="stock">Stock actuel</button>
     <button class="tab-btn" data-tab="indicateurs">Indicateurs</button>
+    <button class="tab-btn" data-tab="expo">Parc expo</button>
     <button class="tab-btn" data-tab="statistiques">Statistiques</button>
     <button class="tab-btn" data-tab="bons">Bons émis</button>
     <button class="tab-btn" data-tab="inventaire">Inventaire</button>
@@ -466,6 +468,55 @@
     <section class="lieu-row" id="lieuRow"></section>
   </div>
 
+  <!-- TAB: PARC EXPO -->
+  <div class="tab-content" id="tabExpo">
+    <section class="stats-row" id="expoStatsRow" style="grid-template-columns:repeat(3,1fr);"></section>
+    <div class="panel-inline" id="expoInPanel">
+      <h2>Réceptionner des vélos — Parc expo</h2>
+      <div class="subtext">Stock distinct de Vélocité : ces vélos ne sont pas comptés dans le stock, les statistiques ni les alertes de l'atelier. Un code par ligne.</div>
+      <div class="form-grid">
+        <div class="field" style="grid-column:1/-1;">
+          <label>Codes (4 chiffres) — un vélo par ligne</label>
+          <div class="line-editor-summary" id="expoInSummary"></div>
+          <div class="line-editor" id="expoInEditor"></div>
+        </div>
+        <div class="field"><label for="expoBon">N° de bon</label><input type="text" id="expoBon"></div>
+        <div class="field"><label for="expoInDate">Date de réception</label><input type="date" id="expoInDate"></div>
+        <div class="field" style="grid-column:span 2;"><label for="expoNote">Remarque (optionnel)</label><input type="text" id="expoNote" placeholder="ex : lot salon"></div>
+        <div class="form-actions">
+          <button class="btn-primary" id="btnExpoIn">Ajouter au stock parc expo</button>
+          <button class="btn-ghost" id="btnExpoInReset">Réinitialiser</button>
+        </div>
+      </div>
+    </div>
+    <div class="panel-inline">
+      <h2>Sortie du parc expo</h2>
+      <div class="subtext">Un code par ligne. Seuls les vélos actuellement en stock parc expo peuvent sortir.</div>
+      <div class="form-grid">
+        <div class="field" style="grid-column:1/-1;">
+          <label>Codes à sortir — un par ligne</label>
+          <div class="line-editor-summary" id="expoOutSummary"></div>
+          <div class="line-editor" id="expoOutEditor"></div>
+        </div>
+        <div class="field"><label for="expoOutDate">Date de sortie</label><input type="date" id="expoOutDate"></div>
+        <div class="form-actions">
+          <button class="btn-collect" id="btnExpoOut">Valider la sortie</button>
+          <button class="btn-ghost" id="btnExpoOutReset">Réinitialiser</button>
+        </div>
+      </div>
+    </div>
+    <div class="filters">
+      <div class="filter-group">
+        <span class="fg-label">Affichage</span>
+        <span class="chip active" data-expofilter="enstock">En stock parc expo</span>
+        <span class="chip" data-expofilter="sorti">Sortis</span>
+        <span class="chip" data-expofilter="tous">Tous</span>
+      </div>
+      <button class="btn-ghost btn-sm" id="btnExpoCsv">Exporter CSV</button>
+    </div>
+    <div class="bike-list" id="expoList"></div>
+  </div>
+
   <!-- TAB: STATISTIQUES -->
   <div class="tab-content" id="tabStatistiques">
     <div class="panel-inline">
@@ -495,6 +546,7 @@
         <div class="field" style="grid-column:1/-1;">
           <label>Volume global de la période</label>
           <div class="lieu-card" id="statStockGlobalResult" style="width:100%;">—</div>
+          <div class="subtext" id="statStockWarn" style="margin:8px 0 0;color:#B5860A;"></div>
         </div>
         <div class="form-actions">
           <button class="btn-primary" id="btnStatStockCompute">Calculer / mettre à jour le graphique</button>
@@ -761,7 +813,7 @@
   function switchTab(key){
     document.querySelectorAll('.tab-btn').forEach(b=>b.classList.toggle('active', b.dataset.tab===key));
     document.querySelectorAll('.tab-content').forEach(c=>c.classList.remove('active'));
-    const map = {stock:'tabStock', indicateurs:'tabIndicateurs', statistiques:'tabStatistiques', bons:'tabBons', inventaire:'tabInventaire', journal:'tabJournal', historique:'tabHistorique'};
+    const map = {stock:'tabStock', indicateurs:'tabIndicateurs', statistiques:'tabStatistiques', expo:'tabExpo', bons:'tabBons', inventaire:'tabInventaire', journal:'tabJournal', historique:'tabHistorique'};
     const target = document.getElementById(map[key]);
     if(target) target.classList.add('active');
   }
@@ -820,6 +872,8 @@
   let journal = [];
   let currentUser = null;
   let stockAlertThreshold = null;
+  let expoBikes = [];
+  let expoFilter = 'enstock';
   const SESSION_KEY = 'velocite_session_v1';
 
   let filterEtat = 'enstock';
@@ -1010,6 +1064,8 @@
 
     fbdb.ref(FB_PREFIX+'/journal').on('value', snap=>{ journal = toArr(snap.val()); renderJournalTab(); });
 
+    fbdb.ref(FB_PREFIX+'/expo').on('value', snap=>{ expoBikes = toArr(snap.val()); renderExpo(); });
+
     fbdb.ref(FB_PREFIX+'/stockAlertThreshold').on('value', snap=>{
       const v = snap.val();
       stockAlertThreshold = (v===null || v===undefined || v==='') ? null : Number(v);
@@ -1018,6 +1074,7 @@
       renderStockAlertBanner();
     });
   }
+  function saveExpo(){ if(fbdb) fbdb.ref(FB_PREFIX+'/expo').set(expoBikes); mirrorSet(FB_PREFIX+'/expo', expoBikes); }
   function saveStockAlertThreshold(){
     if(fbdb) fbdb.ref(FB_PREFIX+'/stockAlertThreshold').set(stockAlertThreshold);
     mirrorSet(FB_PREFIX+'/stockAlertThreshold', stockAlertThreshold);
@@ -1360,11 +1417,11 @@
 
   // ---------- STATISTIQUES AVANCÉES (stock / entrées / sorties dans le temps) ----------
   function etatOnDate(b, dateISO){
-    const events = (b.history||[]).slice().sort((x,y)=> x.date.localeCompare(y.date));
+    // Aujourd'hui (ou futur) : l'état réel du vélo fait foi -> même chiffre que l'onglet Indicateurs
+    if(dateISO >= todayISO()) return b.etat;
+    // Passé : dernier événement (dans l'ordre d'enregistrement) daté au plus tard à cette date
     let etat = null;
-    for(const h of events){
-      if(h.date <= dateISO) etat = h.etat; else break;
-    }
+    (b.history||[]).forEach(h=>{ if(h.date <= dateISO) etat = h.etat; });
     return etat;
   }
   function stockCountOnDate(dateISO){
@@ -2204,6 +2261,8 @@
       const vals = series.map(s=>s.value);
       gEl.innerHTML = `Début (${fmtDate(start)}) : <b>${stockCountOnDate(start)}</b> · Fin (${fmtDate(end)}) : <b>${stockCountOnDate(end)}</b> · Variation : <b>${stockCountOnDate(end)-stockCountOnDate(start)>0?'+':''}${stockCountOnDate(end)-stockCountOnDate(start)}</b>` + (vals.length ? ` · Min : <b>${Math.min(...vals)}</b> · Max : <b>${Math.max(...vals)}</b>` : '');
     } else gEl.textContent = '—';
+    const incoh = bikes.filter(b=>{ const h=b.history||[]; return !h.length || h[h.length-1].etat!==b.etat; }).map(b=>b.code);
+    document.getElementById('statStockWarn').textContent = incoh.length ? `⚠ ${incoh.length} vélo(s) dont l'historique ne correspond pas à l'état actuel (calcul des dates passées approximatif) : ${incoh.slice(0,20).join(', ')}${incoh.length>20?'…':''}` : '';
     renderStatChart('statStockChart', series, '#2f5233');
     return series;
   }
@@ -2261,6 +2320,84 @@
     const series = computeOutStatSection();
     exportStatCSV(`velocite-sorties-${todayISO()}.csv`, series, 'Vélos sortis');
   });
+
+  // ---------- PARC EXPO (stock distinct) ----------
+  function expoInStock(code){ return expoBikes.some(b=>b.code===code && b.etat==='enstock'); }
+  function suggestExpoBon(){
+    const n = new Set(expoBikes.map(b=>b.bon).filter(Boolean)).size + 1;
+    return 'EXP-' + String(n).padStart(4,'0');
+  }
+  const expoInEditor = createCodeEditor('expoInEditor','expoInSummary', code=>
+    expoInStock(code) ? {status:'warn', label:'Déjà en stock parc expo'} : {status:'ok', label:'Prêt'});
+  const expoOutEditor = createCodeEditor('expoOutEditor','expoOutSummary', code=>
+    expoInStock(code) ? {status:'ok', label:'Prêt'} : {status:'error', label:'Introuvable en stock parc expo'});
+
+  function renderExpo(){
+    const el = document.getElementById('expoList');
+    if(!el) return;
+    const nIn = expoBikes.filter(b=>b.etat==='enstock').length;
+    const nOut = expoBikes.length - nIn;
+    document.getElementById('expoStatsRow').innerHTML = `
+      <div class="stat-card total"><div class="stat-num">${nIn}</div><div class="stat-label">En stock parc expo</div></div>
+      <div class="stat-card rendu"><div class="stat-num">${nOut}</div><div class="stat-label">Sortis</div></div>
+      <div class="stat-card"><div class="stat-num">${expoBikes.length}</div><div class="stat-label">Total réceptionné</div></div>`;
+    document.querySelectorAll('[data-expofilter]').forEach(ch=> ch.classList.toggle('active', ch.dataset.expofilter===expoFilter));
+    const rows = expoBikes.filter(b=> expoFilter==='tous' || b.etat===expoFilter);
+    el.innerHTML = rows.length ? rows.map(b=>`
+      <div class="bon-row">
+        <div class="bon-numero">${escapeHtml(b.code)}</div>
+        <span class="bon-type-pill ${b.etat==='enstock'?'reception':'enlevement'}">${b.etat==='enstock'?'En stock parc expo':'Sorti'}</span>
+        <div class="meta-block"><span class="label">Reçu le</span><span class="value">${fmtDate(b.dateReception)}</span></div>
+        <div class="meta-block"><span class="label">Bon</span><span class="value">${escapeHtml(b.bon||'')}</span></div>
+        ${b.dateSortie?`<div class="meta-block"><span class="label">Sorti le</span><span class="value">${fmtDate(b.dateSortie)}</span></div>`:''}
+        <div class="meta-block"><span class="label">Par</span><span class="value">${escapeHtml(b.user||'')}</span></div>
+        ${b.note?`<div class="meta-block"><span class="label">Remarque</span><span class="value">${escapeHtml(b.note)}</span></div>`:''}
+      </div>`).join('') : '<div class="empty-state"><h3>Aucun vélo</h3><p>Rien à afficher pour ce filtre.</p></div>';
+  }
+  document.querySelectorAll('[data-expofilter]').forEach(ch=> ch.addEventListener('click', ()=>{ expoFilter = ch.dataset.expofilter; renderExpo(); }));
+  function resetExpoIn(){ expoInEditor.reset(); document.getElementById('expoNote').value=''; document.getElementById('expoInDate').value=todayISO(); document.getElementById('expoBon').value=suggestExpoBon(); }
+  document.getElementById('expoInDate').value = todayISO();
+  document.getElementById('expoOutDate').value = todayISO();
+  document.getElementById('expoBon').value = suggestExpoBon();
+  document.getElementById('btnExpoInReset').addEventListener('click', resetExpoIn);
+  document.getElementById('btnExpoOutReset').addEventListener('click', ()=> expoOutEditor.reset());
+  document.getElementById('btnToggleExpo').addEventListener('click', ()=>{
+    switchTab('expo'); closeAllPanels();
+    document.getElementById('expoBon').value = suggestExpoBon();
+    document.getElementById('expoInPanel').scrollIntoView({behavior:'smooth', block:'start'});
+    const inp = document.querySelector('#expoInEditor .line-input'); if(inp) inp.focus();
+  });
+  document.getElementById('btnExpoIn').addEventListener('click', ()=>{
+    const codes = expoInEditor.getValidCodes();
+    if(!codes.length){ alert("Aucun code prêt à ajouter. Vérifiez la liste (format ou vélos déjà en stock parc expo)."); return; }
+    const date = document.getElementById('expoInDate').value || todayISO();
+    const note = document.getElementById('expoNote').value.trim();
+    const bon = document.getElementById('expoBon').value.trim() || suggestExpoBon();
+    if(!confirm(`Confirmer la réception de ${codes.length} vélo(s) au parc expo sous le bon n° ${bon} (${fmtDate(date)}) ?`)) return;
+    const user = currentUser ? currentUser.nom : 'Inconnu';
+    codes.forEach(code=> expoBikes.unshift({id:uid(), code, etat:'enstock', dateReception:date, dateSortie:null, bon, note, user}));
+    saveExpo(); renderExpo();
+    logAction('Réception parc expo', `Bon ${bon} — ${codes.length} vélo(s) : ${codes.join(', ')}`);
+    resetExpoIn();
+    alert(`Bon n° ${bon} : ${codes.length} vélo(s) ajouté(s) au stock parc expo.`);
+  });
+  document.getElementById('btnExpoOut').addEventListener('click', ()=>{
+    const codes = expoOutEditor.getValidCodes();
+    if(!codes.length){ alert("Aucun code correspondant à un vélo en stock parc expo."); return; }
+    const date = document.getElementById('expoOutDate').value || todayISO();
+    if(!confirm(`Confirmer la sortie de ${codes.length} vélo(s) du parc expo (${fmtDate(date)}) ?`)) return;
+    codes.forEach(code=>{ const b = expoBikes.find(x=>x.code===code && x.etat==='enstock'); if(b){ b.etat='sorti'; b.dateSortie=date; b.userSortie = currentUser ? currentUser.nom : 'Inconnu'; } });
+    saveExpo(); renderExpo();
+    logAction('Sortie parc expo', `${codes.length} vélo(s) : ${codes.join(', ')}`);
+    expoOutEditor.reset();
+  });
+  document.getElementById('btnExpoCsv').addEventListener('click', ()=>{
+    const rows = [['Code','État','Date réception','Bon','Date sortie','Réceptionné par','Remarque']];
+    expoBikes.forEach(b=> rows.push([b.code, b.etat==='enstock'?'En stock parc expo':'Sorti', fmtDate(b.dateReception), b.bon||'', b.dateSortie?fmtDate(b.dateSortie):'', b.user||'', b.note||'']));
+    const csv = rows.map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(';')).join('\n');
+    downloadBlob(new Blob(['\uFEFF'+csv], {type:'text/csv;charset=utf-8;'}), `velocite-parc-expo-${todayISO()}.csv`);
+  });
+  renderExpo();
 
   // ---------- ADMIN ----------
   const adminOverlay = document.getElementById('adminOverlay');
